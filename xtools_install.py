@@ -133,7 +133,7 @@ class ToolPackage(object):
             os.mkdir(CONFIG['src_dir'])
         if not os.path.exists(self.get_src()):
             tar = tarfile.open(name=self.get_tar(), mode='r')
-            tar.extractall(path=CONFIG['src_dir'], filter='data')
+            tar.extractall(path=CONFIG['src_dir'])
             tar.close()
         else:
             print('Package already extracted.. do nothing')
