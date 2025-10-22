@@ -19,6 +19,15 @@
 # @file   xtools_install.py
 # @author Cesar Fuguet
 ##
+#ENVIRONMENT
+#
+# Requires following env variables:
+#  RISCV Specifies the base folder for installation of executables
+#
+#
+# Fills the current working directory with archives, src and
+# build directories, used to download sware and compile it
+#
 
 """This script installs a cross-toolchain for a given target architecture
 """
@@ -37,6 +46,12 @@ import sys
 import errno
 import tarfile
 import subprocess
+import shutil, stat
+
+def remove_readonly(func, path, _):
+    "Clear the readonly bit and reattempt the removal"
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 TARGET = 'riscv64-unknown-elf'
 PREFIX_DIR = os.environ["RISCV"]
@@ -54,7 +69,7 @@ CONFIG = {
     'mpfr_version' :                     '4.1.0',
     'mpc_version' :                      '1.2.1',
     'isl_version' :                      '0.24',
-    'newlib_version' :                   '4.1.0',
+    'newlib_version'    : '4.1.0',
 
     #  maximum number of parallel jobs to build the tools
     'nparallel' : 8,
@@ -108,7 +123,7 @@ class ToolPackage(object):
 
     def download(self, url):
         if os.path.exists(self.get_src()):
-            print('The package sources is already extracted.. do nothing')
+            print('The package sources are already extracted.. do nothing')
             return True
         if os.path.exists(self.get_tar()):
             print('The package archive is already downloaded.. do nothing')
@@ -200,8 +215,8 @@ class NewlibPackage(ToolPackage):
             '--disable-newlib-unbuf-stream-opt',
             '--disable-newlib-supplied-syscalls',
             '--disable-nls',
-            'CFLAGS_FOR_TARGET=-ffunction-sections -fdata-sections -mcmodel=medany',
-            'CXXFLAGS_FOR_TARGET=-ffunction-sections -fdata-sections -mcmodel=medany',
+            'CFLAGS_FOR_TARGET= -ffunction-sections -fdata-sections -mcmodel=medany',
+            'CXXFLAGS_FOR_TARGET= -ffunction-sections -fdata-sections -mcmodel=medany',
         ]
         subprocess.call(cmd)
 
@@ -459,6 +474,26 @@ class GdbPackage(ToolPackage):
 def main():
     """ Main routine
     """
+    print("= = = = = = = == = = = = = = = = = = = = = =")
+    print("Treating target : " + TARGET)
+    print("= = = = = = = == = = = = = = = = = = = = = =")
+    if not os.path.exists(CONFIG['install_dir']):
+        print('ERROR : The installation directory does not exists')
+        exit(1)
+        
+    buildTree = CONFIG['build_dir'];
+    if os.path.exists(buildTree):
+        print("WARNING: build dir " + buildTree + " already exists.")
+        while True:
+            uInput = input("Empty recursively dir (Y/N)?")
+            if uInput.lower() == "y":
+                shutil.rmtree(buildTree, onerror=remove_readonly)
+                break
+            elif uInput.lower() == "n":     
+                print("Exiting...")
+                exit()
+            print("I do not understand, continuing...")
+        
     print('Building', CONFIG['target'], 'cross-compiler')
     print('Archives directory:', CONFIG['archive_dir'])
     print('Sources directory:', CONFIG['src_dir'])
