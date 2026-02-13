@@ -18,6 +18,7 @@
 ##
 # @file   xtools_install.py
 # @author Cesar Fuguet
+# @author Lorenzo Ciampolini
 ##
 #ENVIRONMENT
 #
@@ -27,7 +28,14 @@
 #
 # Fills the current working directory with archives, src and
 # build directories, used to download sware and compile it
+# use `python -u` to unbufferize output (useful if you track log for errors)
 #
+# NB the src directories are used to create the build directories
+#    the build directories are used to create the target binaries
+#    So, if you are running again in the same directory,
+#    all existing configuration might be related to a different target
+#    Unless you are sure that you are trying to build the same targets,
+#    You should answer "Y" to the "Recursively remove all dirs" question
 
 """This script installs a cross-toolchain for a given target architecture
 """
@@ -48,6 +56,10 @@ import tarfile
 import subprocess
 import shutil, stat
 
+# WARNING : if you answer by Y, write-protected dirs
+# and files will be removed.
+# simple function to support recursive remove of
+# write-protected files 
 def remove_readonly(func, path, _):
     "Clear the readonly bit and reattempt the removal"
     os.chmod(path, stat.S_IWRITE)
@@ -248,7 +260,7 @@ class NewlibPackage(ToolPackage):
 
         # configure
         if os.path.lexists('Makefile'):
-            print('A Makefile already exists in the build directory... '
+            print('A Makefile already exists in the build directory ... '
                   'Skip configure')
         else:
             if ( not(self._configure()) ):
@@ -326,7 +338,7 @@ class BinutilsPackage(ToolPackage):
 
         # configure
         if os.path.lexists('Makefile'):
-            print('A Makefile already exists in the build directory... '
+            print('A Makefile already exists in the build directory ... '
                   'Skip configure')
         else:
             if ( not(self._configure()) ):
@@ -448,7 +460,7 @@ class GccPackage(ToolPackage):
 
         # configure
         if os.path.lexists('Makefile'):
-            print('A Makefile already exists in the build directory... '
+            print('A Makefile already exists in the build directory ... '
                   'Skip configure')
         else:
             if ( not(self._configure()) ):
@@ -559,7 +571,7 @@ class GdbPackage(ToolPackage):
 
         # configure
         if os.path.lexists('Makefile'):
-            print('A Makefile already exists in the build directory... '
+            print('A Makefile already exists in the build directory ... '
                   'Skip configure')
         else:
             if ( not(self._configure()) ):
@@ -595,37 +607,45 @@ def main():
     # The most safe to avoid overwriting is this
     # You can tweak and issue only a warning or an error
     if os.path.exists(CONFIG['install_dir']):
-        print('WARNING : The installation directory already exists')
+        print('WARNING : This installation directory already exists:')
+        print(CONFIG['install_dir'])
         # exit(1)
     else:
+        print('Creating installation directory ...')
         os.makedirs(CONFIG['install_dir'])    
         
     buildTree = CONFIG['build_dir'];
     if os.path.exists(buildTree):
         print("=x= WARNING: build dir " + buildTree + " already exists.")
         while True:
-            uInput = input("Empty recursively dir (Y/N)?")
+            uInput = input("Recursively remove (even write-protected) dirs (Y/N/Q)?")
             if uInput.lower() == "y":
                 shutil.rmtree(buildTree, onerror=remove_readonly)
                 break
             elif uInput.lower() == "n":     
-                print("Exiting...")
-                exit()
-            print("I do not understand, continuing...")
+                print("OK, but it will not work if you tried on a different target ...")
+                break
+            elif uInput.lower() == "q":     
+               print("Exiting ...")
+               exit()
+            print("I do not understand, continuing ...")
         print()
         
     srcTree = CONFIG['src_dir'];
     if os.path.exists(srcTree):
         print("=x= WARNING: src dir " + srcTree + " already exists.")
         while True:
-            uInput = input("Empty recursively dir (Y/N)?")
+            uInput = input("Recursively remove (even write-protected) dirs (Y/N/Q)?")
             if uInput.lower() == "y":
                 shutil.rmtree(srcTree, onerror=remove_readonly)
                 break
             elif uInput.lower() == "n":     
-                print("Exiting...")
-                exit()
-            print("I do not understand, continuing...")
+                print("OK, but it will not work if you tried on a different target ...")
+                break
+            elif uInput.lower() == "q":     
+               print("Exiting ...")
+               exit()
+            print("I do not understand, continuing ...")
         print()
         
     print('=x= Building', CONFIG['target'], 'cross-compiler')
