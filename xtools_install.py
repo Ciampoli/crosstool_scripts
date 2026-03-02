@@ -25,9 +25,6 @@
 # Requires following env variables:
 #  RISCV Specifies the base folder for installation of executables
 #
-# Modifies following env variables:
-#  adds $PREFIX_DIR/bin at PATH beginning
-#
 # Fills the current working directory with archives, src and
 # build directories, used to download sware and compile it
 # use `python -u` to unbufferize output (useful if you track log for errors)
@@ -40,13 +37,15 @@
 #    You should answer "Y" to the "Recursively remove all dirs" question
 #
 # Even though RISCV defines the base folder for the toolchain, some
-# libraries will be installed in the folder containing the toolchain base folder.
+# libraries might be installed in the folder containing the toolchain base
+# folder: this folder is identified by the variable LOCAL_DIR.
+#
 # E.g. if RISCV is <local_path>/riscv32-unknown-elf, then
+#         LOCAL_DIR is <local_path> and, if you install gmp, 
 #                  <local_path>/include/
 #                  <local_path>/lib/
 #                  <local_path>/share/
 #      will also be created and filled with stuff.
-# In the script, <local_path> is identified by the variable LOCAL_DIR.
 #
 """This script installs a RISC-V cross-toolchain for a given target architecture
 """
@@ -67,6 +66,8 @@ import tarfile
 import subprocess
 import shutil, stat
 
+TARGET = 'riscv32-unknown-elf'
+
 # WARNING : if you answer by Y, write-protected dirs
 # and files will be removed.
 # simple function to support recursive remove of
@@ -76,11 +77,28 @@ def remove_readonly(func, path, _):
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
+def remove_onExistence(dirTree, nameString):
+    if os.path.exists(dirTree):
+        print("=x= WARNING:",  nameString, "dir " + dirTree + " already exists.")
+        while True:
+            uInput = input("Recursively remove (even write-protected) dirs (Y/N/Q)?")
+            if uInput.lower() == "y":
+                shutil.rmtree(dirTree, onerror=remove_readonly)
+                break
+            elif uInput.lower() == "n":     
+                print("OK, but it will not work if you tried on a different target ...")
+                break
+            elif uInput.lower() == "q":     
+               print("Exiting ...")
+               exit()
+            print("I do not understand, continuing ...")
+        print()
+    return
+
 def show_pwd():
     cwd = os.getcwd()
     return(cwd)
 
-TARGET = 'riscv32-unknown-elf'
 PREFIX_DIR = os.environ["RISCV"]
 LOCAL_DIR = os.path.dirname(PREFIX_DIR) 
 SYSROOT_DIR = os.path.join(PREFIX_DIR, 'sysroot')
@@ -116,7 +134,11 @@ CONFIG = {
     'sysroot_dir' :                      SYSROOT_DIR,
 }
 
+# Setting this, allows to call tools like riscv32-unknown-elf-ar
+# without their full path specification, avoiding errors like 
+#/bin/sh: line 2: riscv32-unknown-elf-ar: command not found
 os.environ["PATH"] = os.path.join(CONFIG['install_dir'], 'bin') + ':' + os.environ["PATH"]
+
 
 class ToolPackage(object):
     """ Generic class for describing a tool package
@@ -188,6 +210,8 @@ class ToolPackage(object):
         return True
 
     # returns True always
+    # This is a common preliminary step for all build
+    # of all packages
     def build(self):
         """ This function prepares the package for its building
         """
@@ -219,13 +243,17 @@ class ToolPackage(object):
 class NewlibPackage(ToolPackage):
     """ Class for describing a newlib package
     """
-    repos_url = (
-        'ftp://sourceware.org/pub/newlib',
-    )
+    
+    # NB python does not implicitely call constructors of base class
+    def __init__(self, name, configDic, tar_extension):
+        super().__init__(name, configDic, tar_extension)
+        self.repos_url = (
+            'ftp://sourceware.org/pub/newlib',
+        )
 
     # returns True if all is OK, otherwise False
     def download(self):
-        for base_url in NewlibPackage.repos_url:
+        for base_url in self.repos_url:
             url = (
                 base_url + '/' +
                 self.get_full_name() + self.tar_extension
@@ -240,7 +268,7 @@ class NewlibPackage(ToolPackage):
         """ This function configures the NEWLIB package for the target
         architecture
         """
-        print('=x=NewlibP= _Configuring ', self.get_full_name(), '...')
+        print('=x=NewlibP= _Configuring', self.get_full_name(), '...')
         cmd = [
             os.path.join(self.get_src(), 'configure'),
             '--prefix=' + CONFIG['install_dir'],
@@ -274,7 +302,7 @@ class NewlibPackage(ToolPackage):
         """ This function builds the NEWLIB package for the target
         architecture
         """
-        print('=x= Building ', self.get_full_name(), '...')
+        print('=x= Building', self.get_full_name(), '...')
         if ( not(super(NewlibPackage, self).build()) ):
             return False
         else:
@@ -303,7 +331,7 @@ class NewlibPackage(ToolPackage):
 
     # returns True if all is OK, otherwise False
     def install(self):
-        print('=x= Installing ', self.get_full_name(), '...')
+        print('=x= Installing', self.get_full_name(), '...')
         if ( not(super(NewlibPackage, self).install()) ):
             return False
 
@@ -322,13 +350,17 @@ class NewlibPackage(ToolPackage):
 class BinutilsPackage(ToolPackage):
     """ Class for describing a binutils package
     """
-    repos_url = (
-        'http://ftpmirror.gnu.org/binutils',
-        'http://ftp.gnu.org/gnu/binutils',
-    )
+    
+    # NB python does not implicitely call constructors of base class
+    def __init__(self, name, configDic, tar_extension):
+        super().__init__(name, configDic, tar_extension)
+        self.repos_url = (
+            'http://ftpmirror.gnu.org/binutils',
+            'http://ftp.gnu.org/gnu/binutils',
+        )
 
     def download(self):
-        for base_url in BinutilsPackage.repos_url:
+        for base_url in self.repos_url:
             url = (
                 base_url + '/' +
                 self.get_full_name() + self.tar_extension
@@ -343,6 +375,7 @@ class BinutilsPackage(ToolPackage):
         """ This function configures the BINUTILS package for the target
         architecture
         """
+        print('=x= _Configuring', self.get_full_name(), '...')
         cmd = [
             os.path.join(self.get_src(), 'configure'),
             '--prefix=' + CONFIG['install_dir'],
@@ -367,7 +400,7 @@ class BinutilsPackage(ToolPackage):
         """ This function builds the BINUTILS package for the target
         architecture
         """
-        print('=x= Building ', self.get_full_name(), '...')
+        print('=x= Building', self.get_full_name(), '...')
         if ( not(super(BinutilsPackage, self).build()) ):
             return False
 
@@ -394,7 +427,7 @@ class BinutilsPackage(ToolPackage):
 
     # returns True if all is OK, otherwise False
     def install(self):
-        print('=x= Installing ', self.get_full_name(), '...')
+        print('=x= Installing', self.get_full_name(), '...')
         if ( not(super(BinutilsPackage, self).install()) ):
             return False
 
@@ -413,15 +446,21 @@ class BinutilsPackage(ToolPackage):
 class GccPackage(ToolPackage):
     """ Class for describing a GCC package
     """
-    repos_url = (
-        'http://ftpmirror.gnu.org/gcc',
-        'ftp://ftp.gnu.org/gnu/gcc',
-    )
-
-    newlibPkg = NewlibPackage('newlib', CONFIG['newlib_version'], '.tar.gz')
-
+    
+    # NB python does not implicitely call constructors of base class
+    def __init__(self, name, configDic, tar_extension):
+        print ("Calling deep")
+        super().__init__(name, configDic, tar_extension)
+        self.repos_url = (
+            'http://ftpmirror.gnu.org/gcc',
+            'ftp://ftp.gnu.org/gnu/gcc',
+        )
+        self.newlibPkg = NewlibPackage('newlib',
+                                       CONFIG['newlib_version'],
+                                       '.tar.gz')
+        
     def download(self):
-        for base_url in GccPackage.repos_url:
+        for base_url in self.repos_url:
             url = (
                 base_url + '/' +
                 self.get_full_name() + '/' +
@@ -437,6 +476,7 @@ class GccPackage(ToolPackage):
         """ This function configures the GCC package for the target
         architecture
         """
+        print('=x= _Configuring ', self.get_full_name(), '...')
         cmd = [
             os.path.join(self.get_src(), 'configure'),
             '--prefix=' + CONFIG['install_dir'],
@@ -465,7 +505,7 @@ class GccPackage(ToolPackage):
     def prerequisites(self):
         """ Install GCC required packages into its source directory
         """
-        print('=x= Prerequisites of ', self.get_full_name(), '...')
+        print('=x= Prerequisites of', self.get_full_name(), '...')
         if ( not(super(GccPackage, self).prerequisites()) ):
             print ("Condition 0 not reached")
             return False
@@ -491,14 +531,14 @@ class GccPackage(ToolPackage):
 
         # download and extract the newlib library
         print('=x=', self.name, 'Downloading newlib...')
-        if ( not(GccPackage.newlibPkg.download()) ):
+        if ( not(self.newlibPkg.download()) ):
             print ("Condition 2 not reached")
             return False
         else:
             print('=x=', self.name, ', Done.')
         
         print('=x=', self.name, 'Extracting newlib...')
-        if ( not(GccPackage.newlibPkg.extract()) ):
+        if ( not(self.newlibPkg.extract()) ):
             print ("Condition 3 not reached")
             return False
         else:
@@ -510,7 +550,7 @@ class GccPackage(ToolPackage):
     def build(self):
         """ This function builds the GCC package for the target architecture
         """
-        print('=x= Building ', self.get_full_name(), '...')
+        print('=x= Building', self.get_full_name(), '...')
         if ( not(super(GccPackage, self).build()) ):
             return False
         else:
@@ -578,12 +618,12 @@ class GccPackage(ToolPackage):
 
         # build and install newlib (C-library)
         print('=x=', self.name, 'Building newlib...')
-        if ( not(GccPackage.newlibPkg.build()) ):
+        if ( not(self.newlibPkg.build()) ):
             return False
         else:
             print('=x=', self.name, ', Done.')
         print('=x=', self.name, 'Installing newlib...')
-        if ( not(GccPackage.newlibPkg.install()) ):
+        if ( not(self.newlibPkg.install()) ):
             return False
         else:
             print('=x=', self.name, ', Done.')
@@ -610,8 +650,100 @@ class GccPackage(ToolPackage):
 
     # returns True if all is OK, otherwise False
     def install(self):
-        print('=x= Installing ', self.get_full_name(), '...')
+        print('=x= Installing', self.get_full_name(), '...')
         if ( not(super(GccPackage, self).install()) ):
+            return False
+        else:
+            print('=x=', self.name, ', Done.')
+
+        # install
+        cmd = ['make', 'install']
+        print('=x=', self.name, '= Working in   : ', show_pwd())
+        print('=x=', self.name, '= Line command : ', cmd)
+        returncode = subprocess.call(cmd)
+        if (returncode) :
+             return False
+        else:
+            print('=x=', self.name, ', Done.')
+        return True
+
+
+class GmpPackage(ToolPackage):
+    """ Class for describing a GDB package
+    """
+    
+    # NB python does not implicitely call constructors of base class
+    def __init__(self, name, configDic, tar_extension):
+        super().__init__(name, configDic, tar_extension)
+        self.repos_url = (
+            'http://gmplib.org/download/gmp',
+        )
+    # returns True if all is OK, otherwise False
+    def download(self):
+        for base_url in self.repos_url:
+            url = (
+                base_url + '/' +
+                self.get_full_name() + self.tar_extension
+            )
+            if super(GmpPackage, self).download(url):
+                return True
+
+        return False
+
+    # returns True if all is OK, otherwise False
+    def _configure(self):
+        """ This function configures the GDB package for the target
+        architecture
+        """
+        print('=x= _Configuring', self.get_full_name(), '...')
+        cmd = [
+            os.path.join(self.get_src(), 'configure'),
+            '--prefix=' + LOCAL_DIR
+        ]
+        print('=x=', self.name, '= Working in   : ', show_pwd())
+        print('=x=', self.name, '= Line command : ', cmd)
+        returncode = subprocess.call(cmd)
+        if (returncode) :
+             return False
+        else:
+            print('=x=', self.name, ', Done.')
+        return True
+    
+    # returns True if all is OK, otherwise False
+    # performs configure and make steps
+    def build(self):
+        """ This function builds the GMP package
+        """
+        print('=x= Building', self.get_full_name(), '...')
+        if ( not(super(GmpPackage, self).build()) ):
+            return False
+
+        # configure
+        if os.path.lexists('Makefile'):
+            print('A Makefile already exists in the build directory ... '
+                  'Skip configure')
+        else:
+            if ( not(self._configure()) ):
+                return False
+            else:
+                print('=x=', self.name, ', Done.')
+
+        # build
+        cmd = ['make', '-j' + str(CONFIG['nparallel'])]
+        print('=x=', self.name, '= Working in   : ', show_pwd())
+        print('=x=', self.name, '= Line command : ', cmd)
+        returncode = subprocess.call(cmd)
+        if (returncode) :
+             return False
+        else:
+            print('=x=', self.name, ', Done.')
+        return True
+    
+    # returns True if all is OK, otherwise False
+    # performs make install step
+    def install(self):
+        print('=x= Installing', self.get_full_name(), '...')
+        if ( not(super(GmpPackage, self).install()) ):
             return False
         else:
             print('=x=', self.name, ', Done.')
@@ -631,14 +763,18 @@ class GccPackage(ToolPackage):
 class GdbPackage(ToolPackage):
     """ Class for describing a GDB package
     """
-    repos_url = (
-        'http://ftpmirror.gnu.org/gdb',
-        'http://ftp.gnu.org/gnu/gdb',
-    )
-
+    
+    # NB python does not implicitely call constructors of base class
+    def __init__(self, name, configDic, tar_extension):
+        super().__init__(name, configDic, tar_extension)
+        self.repos_url = (
+            'http://ftpmirror.gnu.org/gdb',
+            'http://ftp.gnu.org/gnu/gdb',
+        )
+    
     # returns True if all is OK, otherwise False
     def download(self):
-        for base_url in GdbPackage.repos_url:
+        for base_url in self.repos_url:
             url = (
                 base_url + '/' +
                 self.get_full_name() + self.tar_extension
@@ -653,6 +789,7 @@ class GdbPackage(ToolPackage):
         """ This function configures the GDB package for the target
         architecture
         """
+        print('=x= _Configuring', self.get_full_name(), '...')
         cmd = [
             os.path.join(self.get_src(), 'configure'),
             '--prefix=' + CONFIG['install_dir'],
@@ -674,7 +811,7 @@ class GdbPackage(ToolPackage):
     def build(self):
         """ This function builds the GDB package for the target architecture
         """
-        print('=x= Building ', self.get_full_name(), '...')
+        print('=x= Building', self.get_full_name(), '...')
         if ( not(super(GdbPackage, self).build()) ):
             return False
         else:
@@ -704,7 +841,7 @@ class GdbPackage(ToolPackage):
 
     # returns True if all is OK, otherwise False
     def install(self):
-        print('=x= Installing ', self.get_full_name(), '...')
+        print('=x= Installing', self.get_full_name(), '...')
         if ( not(super(GdbPackage, self).install()) ):
             return False
         else:
@@ -725,12 +862,12 @@ class GdbPackage(ToolPackage):
 def main():
     """ Main routine
     """
-    print("=x= runing on host :")
+    print("=x= running on host :")
     py3output = subprocess.check_output(['uname', '-a'])
     print(py3output)
-    print("=x= = = = = = == = = = = = = = = = = = = = =")
-    print("=x= Treating target : " + TARGET)
-    print("=x= = = = = = == = = = = = = = = = = = = = =")
+    print("= = = = = = = == = = = = = = = = = = = = = =")
+    print("Treating target : " + TARGET)
+    print("= = = = = = = == = = = = = = = = = = = = = =")
     # The most safe to avoid overwriting is this
     # You can tweak and issue only a warning or an error
     if os.path.exists(CONFIG['install_dir']):
@@ -741,40 +878,10 @@ def main():
         print('Creating installation directory ...')
         os.makedirs(CONFIG['install_dir'])    
         
-    buildTree = CONFIG['build_dir'];
-    if os.path.exists(buildTree):
-        print("=x= WARNING: build dir " + buildTree + " already exists.")
-        while True:
-            uInput = input("Recursively remove (even write-protected) dirs (Y/N/Q)?")
-            if uInput.lower() == "y":
-                shutil.rmtree(buildTree, onerror=remove_readonly)
-                break
-            elif uInput.lower() == "n":     
-                print("OK, but it will not work if you tried on a different target ...")
-                break
-            elif uInput.lower() == "q":     
-               print("Exiting ...")
-               exit()
-            print("I do not understand, continuing ...")
-        print()
+    remove_onExistence(CONFIG['build_dir'], "build")
         
-    srcTree = CONFIG['src_dir'];
-    if os.path.exists(srcTree):
-        print("=x= WARNING: src dir " + srcTree + " already exists.")
-        while True:
-            uInput = input("Recursively remove (even write-protected) dirs (Y/N/Q)?")
-            if uInput.lower() == "y":
-                shutil.rmtree(srcTree, onerror=remove_readonly)
-                break
-            elif uInput.lower() == "n":     
-                print("OK, but it will not work if you tried on a different target ...")
-                break
-            elif uInput.lower() == "q":     
-               print("Exiting ...")
-               exit()
-            print("I do not understand, continuing ...")
-        print()
-        
+    remove_onExistence(CONFIG['src_dir'], "src")
+
     print('=x= Building', CONFIG['target'], 'cross-compiler')
     print('=x= Archives directory:', CONFIG['archive_dir'])
     print('=x= Sources directory:', CONFIG['src_dir'])
@@ -782,33 +889,41 @@ def main():
     print('=x= Install directory:', CONFIG['install_dir'])
 
     packages = (
+        # The order is relevant. gmp must be placed BEFORE gdb.
         BinutilsPackage('binutils', CONFIG['binutils_version'], '.tar.gz'),
         GccPackage('gcc', CONFIG['gcc_version'], '.tar.gz'),
+        GmpPackage('gmp', CONFIG['gmp_version'], '.tar.xz'),
         GdbPackage('gdb', CONFIG['gdb_version'], '.tar.gz'),
     )
     for pkg in packages:
-        print('\n=x= Processing ', pkg.get_full_name(), '...')
+        print('\n=x= Processing', pkg.get_full_name(), '...')
 
-        print('=x= Downloading', pkg.get_tar(), '...')
-        if ( not(pkg.download()) ) :
-            print('=x= Dload failed for ', pkg.get_full_name(), '...')
-            break
-        print('=x= Extracting', pkg.get_full_name(), '...')
-        if ( not(pkg.extract()) ) :
-            print('=x= Extract failed for ', pkg.get_full_name(), '...')
-            break
-        print('=x= Prerequisites', pkg.get_full_name(), '...')
-        if ( not(pkg.prerequisites()) ) :
-            print('=x= Prerequisites failed for ', pkg.get_full_name(), '...')
-            break
-        print('=x= Building', pkg.get_full_name(), '...')
-        if ( not(pkg.build()) ) :
-            print('=x= Build failed for ', pkg.get_full_name(), '...')
-            break
-        print('=x= Installing', pkg.get_full_name(), '...')
-        if ( not(pkg.install()) ) :
-            print('=x= Install failed for ', pkg.get_full_name(), '...')
-            break
+        doStuff = True
+        print('=x= Starting download phase of', pkg.get_tar(), '...')
+        if (doStuff):
+            if not(pkg.download())  :
+                print('=x= Download phase failed for', pkg.get_full_name(), '...')
+                break
+        print('=x= Starting Extract phase of', pkg.get_full_name(), '...')
+        if (doStuff):
+            if ( not(pkg.extract()) ) :
+                print('=x= Extract phase failed for', pkg.get_full_name(), '...')
+                break
+        print('=x= Starting Prerequisite phase of', pkg.get_full_name(), '...')
+        if (doStuff):
+            if ( not(pkg.prerequisites()) ) :
+                print('=x= Prerequisite phase failed for', pkg.get_full_name(), '...')
+                break
+        print('=x= Starting Build phase of', pkg.get_full_name(), '...')
+        if (doStuff):
+            if ( not(pkg.build()) ) :
+                print('=x= Build phase failed for', pkg.get_full_name(), '...')
+                break
+        print('=x= Starting install phase of', pkg.get_full_name(), '...')
+        if (doStuff):
+            if ( not(pkg.install()) ) :
+                print('=x= Install phase failed for', pkg.get_full_name(), '...')
+                break
 
 
 if __name__ == '__main__':
