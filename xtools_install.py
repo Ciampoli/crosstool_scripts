@@ -65,8 +65,17 @@ import errno
 import tarfile
 import subprocess
 import shutil, stat
+import argparse
 
-TARGET = 'riscv32-unknown-elf'
+# Determine which command has been called
+CalledLink = sys.argv[0]
+name = os.path.basename(CalledLink)
+# Short description
+oneLinerComment = 'Build a RISC-V toolchain at $RISCV'
+
+# These two become only default values
+DEFBUILD  = 'x86_64-pc-linux-gnu'
+DEFTARGETLIST = ['riscv32-unknown-elf']
 
 # WARNING : if you answer by Y, write-protected dirs
 # and files will be removed.
@@ -104,50 +113,25 @@ LOCAL_DIR = os.path.dirname(PREFIX_DIR)
 SYSROOT_DIR = os.path.join(PREFIX_DIR, 'sysroot')
 SCRIPT_DIR = os.getcwd()
 
-CONFIG = {
-    'target' :                           TARGET,
-
-    #  version of tools
-    'binutils_version' :                 '2.38',
-    'gcc_version'      :                 '11.2.0',
-    'gdb_version'      :                 '11.2',
-    'gmp_version'      :                 '6.2.1',
-    'mpfr_version'     :                 '4.1.0',
-    'mpc_version'      :                 '1.2.1',
-    'isl_version'      :                 '0.24',
-    'newlib_version'   :                 '4.1.0',
-
-    #  maximum number of parallel jobs to build the tools
-    'nparallel'        :                  1,
-
-    #  extra configure options
-    'gcc_configure_extra_options' :       '',
-    # 'gcc_configure_extra_options' :     '--with-isa-spec=2.2',
-    'binutils_configure_extra_options' :  '',
-    # 'binutils_configure_extra_options' : '--with-isa-spec=2.2',
-    'gdb_configure_extra_options' :  '--with-libgmp-prefix='+LOCAL_DIR,
-    #  base directories shared by all tools
-    'archive_dir' :                      os.path.join(SCRIPT_DIR, 'archives'),
-    'src_dir' :                          os.path.join(SCRIPT_DIR, 'src'),
-    'build_dir' :                        os.path.join(SCRIPT_DIR, 'build'),
-    'install_dir' :                      PREFIX_DIR,
-    'sysroot_dir' :                      SYSROOT_DIR,
-}
 
 # Setting this, allows to call tools like riscv32-unknown-elf-ar
 # without their full path specification, avoiding errors like 
 #/bin/sh: line 2: riscv32-unknown-elf-ar: command not found
-os.environ["PATH"] = os.path.join(CONFIG['install_dir'], 'bin') + ':' + os.environ["PATH"]
+os.environ["PATH"] = os.path.join(PREFIX_DIR, 'bin') + ':' + os.environ["PATH"]
 
 
 class ToolPackage(object):
     """ Generic class for describing a tool package
     """
-    def __init__(self, name, version, tar_extension):
+    def __init__(self, name, configDic, tar_extension):
         """ This function initialize package attributes
         """
         self.name = name
-        self.version = version
+        self.configDic = configDic
+        # Allow a more uniform access to version
+        # (instead of using gcc_version, gdb_version etc.)
+        versionKey = self.name + "_version" 
+        self.version = self.configDic[versionKey]
         self.tar_extension = tar_extension
 
     def get_full_name(self):
@@ -158,18 +142,18 @@ class ToolPackage(object):
     def get_src(self):
         """ This function returns full path to the package source directory
         """
-        return os.path.join(CONFIG['src_dir'], self.get_full_name())
+        return os.path.join(self.configDic['src_dir'], self.get_full_name())
 
     def get_build(self):
         """ This function returns full path to the package build directory
         """
-        return os.path.join(CONFIG['build_dir'], self.get_full_name())
+        return os.path.join(self.configDic['build_dir'], self.get_full_name())
 
     def get_tar(self):
         """ This function returns full path to the package tar file
         """
         tar_file = self.get_full_name() + self.tar_extension
-        return os.path.join(CONFIG['archive_dir'], tar_file)
+        return os.path.join(self.configDic['archive_dir'], tar_file)
 
     # returns True if all is OK, otherwise False
     def download(self, url):
@@ -179,8 +163,8 @@ class ToolPackage(object):
         if os.path.exists(self.get_tar()):
             print('The package archive is already downloaded.. do nothing')
             return True
-        if not os.path.exists(CONFIG['archive_dir']):
-            os.mkdir(CONFIG['archive_dir'])
+        if not os.path.exists(self.configDic['archive_dir']):
+            os.mkdir(self.configDic['archive_dir'])
         print('Fetching from', url)
         cmd = ['wget', '--tries=50', '-q', '-O', self.get_tar(), url]
         print('=x=', self.name, '= Working in   : ', show_pwd())
@@ -199,11 +183,11 @@ class ToolPackage(object):
         """
         if not os.path.lexists(self.get_tar()):
             raise IOError(self.get_tar() + ' file not found')
-        if not os.path.exists(CONFIG['src_dir']):
-            os.mkdir(CONFIG['src_dir'])
+        if not os.path.exists(self.configDic['src_dir']):
+            os.mkdir(self.configDic['src_dir'])
         if not os.path.exists(self.get_src()):
             tar = tarfile.open(name=self.get_tar(), mode='r')
-            tar.extractall(path=CONFIG['src_dir'])
+            tar.extractall(path=self.configDic['src_dir'])
             tar.close()
         else:
             print('Package already extracted.. do nothing')
@@ -215,8 +199,8 @@ class ToolPackage(object):
     def build(self):
         """ This function prepares the package for its building
         """
-        if not os.path.exists(CONFIG['build_dir']):
-            os.mkdir(CONFIG['build_dir'])
+        if not os.path.exists(self.configDic['build_dir']):
+            os.mkdir(self.configDic['build_dir'])
         if not os.path.exists(self.get_build()):
             os.mkdir(self.get_build())
 
@@ -229,10 +213,10 @@ class ToolPackage(object):
     def install(self):
         """ This function prepares the package for its installation
         """
-        if not os.path.exists(CONFIG['install_dir']):
+        if not os.path.exists(self.configDic['install_dir']):
             print('The installation directory does not exists')
             return False
-        if not os.access(CONFIG['install_dir'], os.W_OK):
+        if not os.access(self.configDic['install_dir'], os.W_OK):
             print('The installation directory has not write permissions')
             return False
 
@@ -271,8 +255,10 @@ class NewlibPackage(ToolPackage):
         print('=x=NewlibP= _Configuring', self.get_full_name(), '...')
         cmd = [
             os.path.join(self.get_src(), 'configure'),
-            '--prefix=' + CONFIG['install_dir'],
-            '--target=' + CONFIG['target'],
+            '--prefix=' + self.configDic['install_dir'],
+            '--build=' + self.configDic['build'],
+            '--host=' + self.configDic['host'],
+            '--target=' + self.configDic['target'],
             '--enable-newlib-reent-small',
             '--enable-newlib-nano-malloc',
             '--enable-newlib-global-atexit',
@@ -319,7 +305,7 @@ class NewlibPackage(ToolPackage):
                 print('=x=', self.name, ', Done.')
 
         # build
-        cmd = ['make', '-j' + str(CONFIG['nparallel'])]
+        cmd = ['make', '-j' + str(self.configDic['nparallel'])]
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
         returncode = subprocess.call(cmd)
@@ -378,13 +364,13 @@ class BinutilsPackage(ToolPackage):
         print('=x= _Configuring', self.get_full_name(), '...')
         cmd = [
             os.path.join(self.get_src(), 'configure'),
-            '--prefix=' + CONFIG['install_dir'],
-            '--target=' + CONFIG['target'],
-            '--program-prefix=' + CONFIG['target'] + '-',
+            '--prefix=' + self.configDic['install_dir'],
+            '--target=' + self.configDic['target'],
+            '--program-prefix=' + self.configDic['target'] + '-',
             '--disable-nls',
             '--enable-multilib',
             '--disable-werror',
-            CONFIG['binutils_configure_extra_options']
+            self.configDic['binutils_configure_extra_options']
         ]
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
@@ -415,7 +401,7 @@ class BinutilsPackage(ToolPackage):
                 print('=x=', self.name, ', Done.')
 
         # build
-        cmd = ['make', '-j' + str(CONFIG['nparallel'])]
+        cmd = ['make', '-j' + str(self.configDic['nparallel'])]
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
         returncode = subprocess.call(cmd)
@@ -456,7 +442,7 @@ class GccPackage(ToolPackage):
             'ftp://ftp.gnu.org/gnu/gcc',
         )
         self.newlibPkg = NewlibPackage('newlib',
-                                       CONFIG['newlib_version'],
+                                       configDic,
                                        '.tar.gz')
         
     def download(self):
@@ -479,16 +465,16 @@ class GccPackage(ToolPackage):
         print('=x= _Configuring ', self.get_full_name(), '...')
         cmd = [
             os.path.join(self.get_src(), 'configure'),
-            '--prefix=' + CONFIG['install_dir'],
-            '--target=' + CONFIG['target'],
-            '--program-prefix=' + CONFIG['target'] + '-',
+            '--prefix=' + self.configDic['install_dir'],
+            '--target=' + self.configDic['target'],
+            '--program-prefix=' + self.configDic['target'] + '-',
             '--with-newlib',
             '--disable-nls',
             '--enable-multilib',
             '--disable-werror',
             '--without-headers',
             '--enable-languages=c,c++',
-            CONFIG['gcc_configure_extra_options'],
+            self.configDic['gcc_configure_extra_options'],
             'CFLAGS_FOR_TARGET=-Os -mcmodel=medany',
             'CXXFLAGS_FOR_TARGET=-Os -mcmodel=medany',
         ]
@@ -572,7 +558,7 @@ class GccPackage(ToolPackage):
 
         # compile a partial GCC (stage1)
         # build
-        cmd = ['make', '-j' + str(CONFIG['nparallel']), 'all-gcc']
+        cmd = ['make', '-j' + str(self.configDic['nparallel']), 'all-gcc']
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
         returncode = subprocess.call(cmd)
@@ -580,7 +566,7 @@ class GccPackage(ToolPackage):
             return False
         else:
             print('=x=', self.name, ', Done.')
-        cmd = ['make', '-j' + str(CONFIG['nparallel']), 'all-target-libgcc']
+        cmd = ['make', '-j' + str(self.configDic['nparallel']), 'all-target-libgcc']
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
         returncode = subprocess.call(cmd)
@@ -630,7 +616,7 @@ class GccPackage(ToolPackage):
 
         # recompile a full GCC (stage2)
         os.chdir(self.get_build())
-        cmd = ['make', '-j' + str(CONFIG['nparallel'])]
+        cmd = ['make', '-j' + str(self.configDic['nparallel'])]
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
         returncode = subprocess.call(cmd)
@@ -729,7 +715,7 @@ class GmpPackage(ToolPackage):
                 print('=x=', self.name, ', Done.')
 
         # build
-        cmd = ['make', '-j' + str(CONFIG['nparallel'])]
+        cmd = ['make', '-j' + str(self.configDic['nparallel'])]
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
         returncode = subprocess.call(cmd)
@@ -792,11 +778,11 @@ class GdbPackage(ToolPackage):
         print('=x= _Configuring', self.get_full_name(), '...')
         cmd = [
             os.path.join(self.get_src(), 'configure'),
-            '--prefix=' + CONFIG['install_dir'],
-            '--target=' + CONFIG['target'],
-            '--program-prefix=' + CONFIG['target'] + '-',
+            '--prefix=' + self.configDic['install_dir'],
+            '--target=' + self.configDic['target'],
+            '--program-prefix=' + self.configDic['target'] + '-',
             '--enable-tui',
-            CONFIG['gdb_configure_extra_options']
+            self.configDic['gdb_configure_extra_options']
         ]
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
@@ -829,7 +815,7 @@ class GdbPackage(ToolPackage):
                 print('=x=', self.name, ', Done.')
 
         # build
-        cmd = ['make', '-j' + str(CONFIG['nparallel']), 'all-gdb']
+        cmd = ['make', '-j' + str(self.configDic['nparallel']), 'all-gdb']
         print('=x=', self.name, '= Working in   : ', show_pwd())
         print('=x=', self.name, '= Line command : ', cmd)
         returncode = subprocess.call(cmd)
@@ -862,68 +848,132 @@ class GdbPackage(ToolPackage):
 def main():
     """ Main routine
     """
-    print("=x= running on host :")
-    py3output = subprocess.check_output(['uname', '-a'])
-    print(py3output)
-    print("= = = = = = = == = = = = = = = = = = = = = =")
-    print("Treating target : " + TARGET)
-    print("= = = = = = = == = = = = = = = = = = = = = =")
-    # The most safe to avoid overwriting is this
-    # You can tweak and issue only a warning or an error
-    if os.path.exists(CONFIG['install_dir']):
-        print('WARNING : This installation directory already exists:')
-        print(CONFIG['install_dir'])
-        # exit(1)
+    parser = argparse.ArgumentParser(prog = name,
+                                     description = oneLinerComment)
+    #'+'. means that all command-line arguments present are gathered into a
+    #list. Additionally, an error message will be generated if there wasn’t
+    # at least one command-line argument present. 
+    parser.add_argument("-t", "--target",  nargs='+',
+                        help = "one or more compiler target architectures [e.g. riscv64-unknown-elf",
+                        type = str, required=False)
+    parser.add_argument("-b", "--build",  nargs=1,
+                        help = "The local compiler [e.g. x86_64-pc-linux-gnu]",
+                        type = str, required=False)
+    # this sets args.target and args.build, if user has provided them
+    args = parser.parse_args()
+    if (args.build):
+        # TO DO : check if it is good wrt local machine
+        BUILD = args.build
     else:
-        print('Creating installation directory ...')
-        os.makedirs(CONFIG['install_dir'])    
+        BUILD = DEFBUILD
+    if (args.target):
+        # TO DO: verify if this is a reasonable target or not
+        # TO DO: verify if this works with a list or not
+        # basically, all sources should be zapped from the scratch
+        TARGETLIST = args.target
+    else:
+        TARGETLIST = DEFTARGETLIST
+
+    print("B:", BUILD)
+    print("T:", TARGETLIST)
+    
+    CONFIG = {
+        'build'             : BUILD,
+        'host'              : BUILD,
+
+        #  version of tools
+        'binutils_version' :                 '2.38',
+        'gcc_version'      :                 '11.2.0',
+        'gdb_version'      :                 '11.2',
+        'gmp_version'      :                 '6.2.1',
+        'mpfr_version'     :                 '4.1.0',
+        'mpc_version'      :                 '1.2.1',
+        'isl_version'      :                 '0.24',
+        'newlib_version'   :                 '4.1.0',
+
+        #  maximum number of parallel jobs to build the tools
+        'nparallel'        :                  1,
+
+        #  extra configure options
+        'gcc_configure_extra_options' :       '',
+        # 'gcc_configure_extra_options' :     '--with-isa-spec=2.2',
+        'binutils_configure_extra_options' :  '',
+        # 'binutils_configure_extra_options' : '--with-isa-spec=2.2',
+        'gdb_configure_extra_options' :  '--with-libgmp-prefix='+LOCAL_DIR,
+        #  base directories shared by all tools
+        'archive_dir' :                      os.path.join(SCRIPT_DIR, 'archives'),
+        'src_dir' :                          os.path.join(SCRIPT_DIR, 'src'),
+        'build_dir' :                        os.path.join(SCRIPT_DIR, 'build'),
+        'install_dir' :                      PREFIX_DIR,
+        'sysroot_dir' :                      SYSROOT_DIR,
+    }
+    # This would allow doing dry run only
+    doStuff = True
+    for TARGET in TARGETLIST:
         
-    remove_onExistence(CONFIG['build_dir'], "build")
-        
-    remove_onExistence(CONFIG['src_dir'], "src")
+        print("=x= running on host :")
+        py3output = subprocess.check_output(['uname', '-a'])
+        print(py3output)
+        print("=x= = = = = = = = == = = = = = = = = = = = = = =")
+        print("=x= Treating target : " + TARGET)
+        CONFIG['target']= TARGET
+        print("=x= = = = = = = = == = = = = = = = = = = = = = =")
+        # The most safe to avoid overwriting is this
+        # You can tweak and issue only a warning or an error
+        if os.path.exists(CONFIG['install_dir']):
+            print('WARNING : This installation directory already exists:')
+            print(CONFIG['install_dir'])
+            # exit(1)
+        else:
+            print('Creating installation directory ...')
+            os.makedirs(CONFIG['install_dir'])    
 
-    print('=x= Building', CONFIG['target'], 'cross-compiler')
-    print('=x= Archives directory:', CONFIG['archive_dir'])
-    print('=x= Sources directory:', CONFIG['src_dir'])
-    print('=x= Build directory:', CONFIG['build_dir'])
-    print('=x= Install directory:', CONFIG['install_dir'])
+        remove_onExistence(CONFIG['build_dir'], "build")
 
-    packages = (
-        # The order is relevant. gmp must be placed BEFORE gdb.
-        BinutilsPackage('binutils', CONFIG['binutils_version'], '.tar.gz'),
-        GccPackage('gcc', CONFIG['gcc_version'], '.tar.gz'),
-        GmpPackage('gmp', CONFIG['gmp_version'], '.tar.xz'),
-        GdbPackage('gdb', CONFIG['gdb_version'], '.tar.gz'),
-    )
-    for pkg in packages:
-        print('\n=x= Processing', pkg.get_full_name(), '...')
+        remove_onExistence(CONFIG['src_dir'], "src")
 
-        doStuff = True
-        print('=x= Starting download phase of', pkg.get_tar(), '...')
-        if (doStuff):
-            if not(pkg.download())  :
-                print('=x= Download phase failed for', pkg.get_full_name(), '...')
-                break
-        print('=x= Starting Extract phase of', pkg.get_full_name(), '...')
-        if (doStuff):
-            if ( not(pkg.extract()) ) :
-                print('=x= Extract phase failed for', pkg.get_full_name(), '...')
-                break
-        print('=x= Starting Prerequisite phase of', pkg.get_full_name(), '...')
-        if (doStuff):
-            if ( not(pkg.prerequisites()) ) :
-                print('=x= Prerequisite phase failed for', pkg.get_full_name(), '...')
-                break
-        print('=x= Starting Build phase of', pkg.get_full_name(), '...')
-        if (doStuff):
-            if ( not(pkg.build()) ) :
-                print('=x= Build phase failed for', pkg.get_full_name(), '...')
-                break
-        print('=x= Starting install phase of', pkg.get_full_name(), '...')
-        if (doStuff):
-            if ( not(pkg.install()) ) :
-                print('=x= Install phase failed for', pkg.get_full_name(), '...')
-                break
+        print('=x= Building', CONFIG['target'], 'cross-compiler')
+        print('=x= Archives directory:', CONFIG['archive_dir'])
+        print('=x= Sources directory:', CONFIG['src_dir'])
+        print('=x= Build directory:', CONFIG['build_dir'])
+        print('=x= Install directory:', CONFIG['install_dir'])
+
+        packages = (
+            # The order is relevant. gmp must be placed BEFORE gdb.
+            BinutilsPackage('binutils', CONFIG, '.tar.gz'),
+            GccPackage('gcc', CONFIG, '.tar.gz'),
+            GmpPackage('gmp', CONFIG, '.tar.xz'),
+            GdbPackage('gdb', CONFIG, '.tar.gz'),
+        )
+        for pkg in packages:
+            print('\n=x= Processing', pkg.get_full_name(), '...')
+            print('=x= Starting download phase of', pkg.get_tar(), '...')
+            if (doStuff):
+                if not(pkg.download())  :
+                    print('=x= Download phase failed for', pkg.get_full_name(), '...')
+                    break
+            print('=x= Starting Extract phase of', pkg.get_full_name(), '...')
+            if (doStuff):
+                if ( not(pkg.extract()) ) :
+                    print('=x= Extract phase failed for', pkg.get_full_name(), '...')
+                    break
+            print('=x= Starting Prerequisite phase of', pkg.get_full_name(), '...')
+            if (doStuff):
+                if ( not(pkg.prerequisites()) ) :
+                    print('=x= Prerequisite phase failed for', pkg.get_full_name(), '...')
+                    break
+            print('=x= Starting Build phase of', pkg.get_full_name(), '...')
+            if (doStuff):
+                if ( not(pkg.build()) ) :
+                    print('=x= Build phase failed for', pkg.get_full_name(), '...')
+                    break
+            print('=x= Starting install phase of', pkg.get_full_name(), '...')
+            if (doStuff):
+                if ( not(pkg.install()) ) :
+                    print('=x= Install phase failed for', pkg.get_full_name(), '...')
+                    break
+        print("=x= Completed target : " + TARGET)
+    print("=x= xTools completed succesfully.")
 
 
 if __name__ == '__main__':
