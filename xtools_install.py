@@ -20,21 +20,17 @@
 # @author Cesar Fuguet
 # @author Lorenzo Ciampolini
 ##
+#SYNOPSIS
+# [python [-u]] ./xtools_install.py [-t <target>] [-b <build>]
+#
+#DESCRIPTION
+# Fills the current working directory with archives, src and
+# build directories, used to download sware and compile it
+#
 #ENVIRONMENT
 #
 # Requires following env variables:
 #  RISCV Specifies the base folder for installation of executables
-#
-# Fills the current working directory with archives, src and
-# build directories, used to download sware and compile it
-# use `python -u` to unbufferize output (useful if you track log for errors)
-# 
-# NB the src directories are used to create the build directories
-#    the build directories are used to create the target binaries
-#    So, if you are running again in the same directory,
-#    all existing configuration might be related to a different target
-#    Unless you are sure that you are trying to build the same targets,
-#    You should answer "Y" to the "Recursively remove all dirs" question
 #
 # Even though RISCV defines the base folder for the toolchain, some
 # libraries might be installed in the folder containing the toolchain base
@@ -46,6 +42,30 @@
 #                  <local_path>/lib/
 #                  <local_path>/share/
 #      will also be created and filled with stuff.
+#
+#EXAMPLES
+# python -u ./xtools_install.py -t riscv32-unknown-elf |& tee install.log
+#
+# `python -u` unbufferizes output, so you can search log for "=x="
+# (highlighted actions ongoing).
+# -t specifies the target, riscv32 baremetal cross-compiler ('elf')
+# Other possible target examples: riscv64-unknown-elf, riscv64-unknown-linux
+# 
+#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# WARNING
+#
+#    The src directories are used to create the build directories
+#    The build directories are used to create the target binaries
+# 
+#    So, if you are running again in the same directory,
+#    all existing configuration might be related to a different target
+# 
+#    Unless you are sure that you are trying to re-build the same targets
+#    or continue some interrupted work, you should answer "Y" to all
+#    "Recursively remove all dirs" questions
+#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 """This script installs a RISC-V cross-toolchain for a given target architecture
 """
