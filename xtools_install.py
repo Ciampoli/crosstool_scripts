@@ -128,6 +128,19 @@ def show_pwd():
     cwd = os.getcwd()
     return(cwd)
 
+# return True if OK
+# return False if error
+def do_and_show_cmd(name, cmd):
+    print('=x=', name, '= Working in   : ', show_pwd())
+    print('=x=', name, '= Line command : ', cmd)
+    returncode = subprocess.call(cmd)
+    if (returncode) :
+        print('=x=', name, ' Error : ', str(returncode))
+        return False
+    else :
+        print('=x=', name, ', Done.')
+        return True
+
 PREFIX_DIR = os.environ["RISCV"]
 LOCAL_DIR = os.path.dirname(PREFIX_DIR) 
 SYSROOT_DIR = os.path.join(PREFIX_DIR, 'sysroot')
@@ -187,10 +200,8 @@ class ToolPackage(object):
             os.mkdir(self.configDic['archive_dir'])
         print('Fetching from', url)
         cmd = ['wget', '--tries=50', '-q', '-O', self.get_tar(), url]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        return True if returncode == 0 else False
+        status = do_and_show_cmd(self.name, cmd)
+        return(status)
 
     # returns True always (empty)
     def prerequisites(self):
@@ -294,14 +305,8 @@ class NewlibPackage(ToolPackage):
             'CFLAGS_FOR_TARGET= -ffunction-sections -fdata-sections -mcmodel=medany',
             'CXXFLAGS_FOR_TARGET= -ffunction-sections -fdata-sections -mcmodel=medany',
         ]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else :
-            print('=x=', self.name, ' : ', str(returncode))
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
     # returns True if all is OK, otherwise False
     def build(self):
@@ -326,14 +331,8 @@ class NewlibPackage(ToolPackage):
 
         # build
         cmd = ['make', '-j' + str(self.configDic['nparallel'])]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
     # returns True if all is OK, otherwise False
     def install(self):
@@ -343,14 +342,8 @@ class NewlibPackage(ToolPackage):
 
         # install
         cmd = ['make', 'install']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-            return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
 
 class BinutilsPackage(ToolPackage):
@@ -392,14 +385,8 @@ class BinutilsPackage(ToolPackage):
             '--disable-werror',
             self.configDic['binutils_configure_extra_options']
         ]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
     # returns True if all is OK, otherwise False
     def build(self):
@@ -422,14 +409,8 @@ class BinutilsPackage(ToolPackage):
 
         # build
         cmd = ['make', '-j' + str(self.configDic['nparallel'])]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
     # returns True if all is OK, otherwise False
     def install(self):
@@ -439,15 +420,9 @@ class BinutilsPackage(ToolPackage):
 
         # install
         cmd = ['make', 'install']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
-
+        status = do_and_show_cmd(self.name, cmd)
+        return status
+ 
 
 class GccPackage(ToolPackage):
     """ Class for describing a GCC package
@@ -498,14 +473,8 @@ class GccPackage(ToolPackage):
             'CFLAGS_FOR_TARGET=-Os -mcmodel=medany',
             'CXXFLAGS_FOR_TARGET=-Os -mcmodel=medany',
         ]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
     # returns True if all is OK, otherwise False
     def prerequisites(self):
@@ -513,7 +482,7 @@ class GccPackage(ToolPackage):
         """
         print('=x= Prerequisites of', self.get_full_name(), '...')
         if ( not(super(GccPackage, self).prerequisites()) ):
-            print ("Condition 0 not reached")
+            print ('=x= Prerequisites of', self.get_full_name(), ', aborting')
             return False
         else:
             print('=x=', self.name, ', Done.')
@@ -526,11 +495,9 @@ class GccPackage(ToolPackage):
         cmd = [
             os.path.join(self.get_src(), 'contrib/download_prerequisites'),
         ]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-            print ("Condition 1 not reached")
+        status = do_and_show_cmd(self.name, cmd)
+        if (not status):
+            print ('=x= Prerequisites of', self.get_full_name(), ', aborting dload')
             return False
         else:
             print('=x=', self.name, ', Done.')
@@ -538,14 +505,14 @@ class GccPackage(ToolPackage):
         # download and extract the newlib library
         print('=x=', self.name, 'Downloading newlib...')
         if ( not(self.newlibPkg.download()) ):
-            print ("Condition 2 not reached")
+            print ('=x= Prerequisites of', self.get_full_name(), ', aborting newlibPkg dload')
             return False
         else:
             print('=x=', self.name, ', Done.')
         
         print('=x=', self.name, 'Extracting newlib...')
         if ( not(self.newlibPkg.extract()) ):
-            print ("Condition 3 not reached")
+            print ('=x= Prerequisites of', self.get_full_name(), ', aborting newlibPkg extract')
             return False
         else:
             print('=x=', self.name, ', Done.')
@@ -576,22 +543,20 @@ class GccPackage(ToolPackage):
             else:
                 print('=x=', self.name, ', Done.')
 
-        # compile a partial GCC (stage1)
+        # compile a partial GCC (stage 1)
         # build
         cmd = ['make', '-j' + str(self.configDic['nparallel']), 'all-gcc']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
+        status = do_and_show_cmd(self.name, cmd)
+        if (not status):
+            print ('=x= build of', self.get_full_name(), ', aborting compilation')
             return False
         else:
             print('=x=', self.name, ', Done.')
         cmd = ['make', '-j' + str(self.configDic['nparallel']), 'all-target-libgcc']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
+        status = do_and_show_cmd(self.name, cmd)
+        if (not status):
+            print ('=x= build of', self.get_full_name(), ', aborting all-target-libgcc')
+            return False
         else:
             print('=x=', self.name, ', Done.')
 
@@ -604,21 +569,19 @@ class GccPackage(ToolPackage):
         
         # install-gcc
         cmd = ['make', 'install-gcc']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
+        status = do_and_show_cmd(self.name, cmd)
+        if (not status):
+            print ('=x= build of', self.get_full_name(), ', aborting install-gcc')
+            return False
         else:
             print('=x=', self.name, ', Done.')
-         
+        
         # install-target-libgcc
         cmd = ['make', 'install-target-libgcc']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
+        status = do_and_show_cmd(self.name, cmd)
+        if (not status):
+            print ('=x= build of', self.get_full_name(), ', aborting install-target-libgcc')
+            return False
         else:
             print('=x=', self.name, ', Done.')
 
@@ -634,25 +597,20 @@ class GccPackage(ToolPackage):
         else:
             print('=x=', self.name, ', Done.')
 
-        # recompile a full GCC (stage2)
+        # recompile a full GCC (stage 2)
         os.chdir(self.get_build())
         cmd = ['make', '-j' + str(self.configDic['nparallel'])]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
+        status = do_and_show_cmd(self.name, cmd)
+        if (not status):
+            print ('=x= build of', self.get_full_name(), ', aborting make')
+            return False
         else:
             print('=x=', self.name, ', Done.')
+            
+        # install a full GCC (stage 2)
         cmd = ['make', 'install']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
     # returns True if all is OK, otherwise False
     def install(self):
@@ -664,14 +622,8 @@ class GccPackage(ToolPackage):
 
         # install
         cmd = ['make', 'install']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
 
 class GmpPackage(ToolPackage):
@@ -706,14 +658,8 @@ class GmpPackage(ToolPackage):
             os.path.join(self.get_src(), 'configure'),
             '--prefix=' + LOCAL_DIR
         ]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
     
     # returns True if all is OK, otherwise False
     # performs configure and make steps
@@ -736,14 +682,8 @@ class GmpPackage(ToolPackage):
 
         # build
         cmd = ['make', '-j' + str(self.configDic['nparallel'])]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
     
     # returns True if all is OK, otherwise False
     # performs make install step
@@ -756,14 +696,8 @@ class GmpPackage(ToolPackage):
 
         # install
         cmd = ['make', 'install']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
 
 class GdbPackage(ToolPackage):
@@ -804,14 +738,8 @@ class GdbPackage(ToolPackage):
             '--enable-tui',
             self.configDic['gdb_configure_extra_options']
         ]
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
     # returns True if all is OK, otherwise False
     def build(self):
@@ -836,14 +764,8 @@ class GdbPackage(ToolPackage):
 
         # build
         cmd = ['make', '-j' + str(self.configDic['nparallel']), 'all-gdb']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
     # returns True if all is OK, otherwise False
     def install(self):
@@ -855,14 +777,8 @@ class GdbPackage(ToolPackage):
 
         # install
         cmd = ['make', 'install-gdb']
-        print('=x=', self.name, '= Working in   : ', show_pwd())
-        print('=x=', self.name, '= Line command : ', cmd)
-        returncode = subprocess.call(cmd)
-        if (returncode) :
-             return False
-        else:
-            print('=x=', self.name, ', Done.')
-        return True
+        status = do_and_show_cmd(self.name, cmd)
+        return status
 
 
 def main():
@@ -912,7 +828,7 @@ def main():
         'newlib_version'   :                 '4.1.0',
 
         #  maximum number of parallel jobs to build the tools
-        'nparallel'        :                  1,
+        'nparallel'        :                  8,
 
         #  extra configure options
         'gcc_configure_extra_options' :       '',
