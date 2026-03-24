@@ -126,12 +126,17 @@ def main():
     #'+'. means that all command-line arguments present are gathered into a
     #list. Additionally, an error message will be generated if there wasn’t
     # at least one command-line argument present. 
-    parser.add_argument("-t", "--target",  nargs='+',
+    parser.add_argument('-t', '--target',  nargs='+',
                         help = "one or more compiler target architectures [e.g. riscv64-unknown-elf",
                         type = str, required=False)
-    parser.add_argument("-b", "--build",  nargs=1,
+    parser.add_argument('-b', '--build',  nargs=1,
                         help = "The local compiler [e.g. x86_64-pc-linux-gnu]",
                         type = str, required=False)
+
+    parser.add_argument('-p', '--package',  nargs=1,
+                        help = "Package to be installed [e.g. gcc or gdb]",
+                        type = str, required=True)
+
     # this sets args.target and args.build, if user has provided them
     args = parser.parse_args()
     if (args.build):
@@ -147,9 +152,6 @@ def main():
     else:
         TARGETLIST = DEFTARGETLIST
 
-    print("B:", BUILD)
-    print("T:", TARGETLIST)
-    
     CONFIG = {
         'build'             : BUILD,
         'host'              : BUILD,
@@ -181,6 +183,51 @@ def main():
         'local_dir' :                        LOCAL_DIR,
         'sysroot_dir' :                      SYSROOT_DIR,
     }
+        
+    # Next should be in part redundant
+    quitCauseSyntaxError = False
+    pName = ''
+    if (args.package == None):
+        quitCauseSyntaxError = True
+
+    if (isinstance(args.package, list)):
+        if (len(args.package)>1):
+            quitCauseSyntaxError = True
+        else:
+            pName = args.package[0]
+            
+    if (quitCauseSyntaxError):
+        print ('ERROR: please provide exactly one package to be installed')
+        print ('Currently supported options are :')
+        print ('   gcc')
+        print ('   gdb')
+        print (' ... bailing out.')
+        exit(1)
+
+   
+    packages = []
+    if (pName == 'gcc'):
+        packages = (
+            # The order is relevant. binutils must be placed BEFORE gcc.
+            binutilsXTool.Package('binutils', CONFIG, '.tar.gz'),
+            gccXTool.Package('gcc', CONFIG, '.tar.gz'),
+        )
+    if (pName == 'gdb'):
+        packages = (
+            # The order is relevant. gmp must be placed BEFORE gdb.
+            gmpXTool.Package('gmp', CONFIG, '.tar.xz'),
+            gdbXTool.Package('gdb', CONFIG, '.tar.gz'),
+        )
+    if (not len(packages) ) :
+        print ('ERROR: package argument', args.package, 'not recognized')
+        print ('Currently supported options are :')
+        print ('   gcc')
+        print ('   gdb')
+        print (' ... bailing out.')
+        exit(2)
+    print("B:", BUILD)
+    print("T:", TARGETLIST)
+    
     # This would allow doing dry run only
     doStuff = True
     for TARGET in TARGETLIST:
@@ -211,43 +258,51 @@ def main():
         print('=x= Sources directory:', CONFIG['src_dir'])
         print('=x= Build directory:', CONFIG['build_dir'])
         print('=x= Install directory:', CONFIG['install_dir'])
-
-        packages = (
-            # The order is relevant. gmp must be placed BEFORE gdb.
-            #binutilsXTool.Package('binutils', CONFIG, '.tar.gz'),
-            gccXTool.Package('gcc', CONFIG, '.tar.gz'),
-            #gmpXTool.Package('gmp', CONFIG, '.tar.xz'),
-            #gdbXTool.Package('gdb', CONFIG, '.tar.gz'),
-        )
+        # this holds the current status
+        failFlag = False
         for pkg in packages:
             print('\n=x= Processing', pkg.get_full_name(), '...')
             print('=x= Starting download phase of', pkg.get_tar(), '...')
             if (doStuff):
                 if not(pkg.download())  :
                     print('=x= Download phase failed for', pkg.get_full_name(), '...')
+                    failFlag = True
                     break
             print('=x= Starting Extract phase of', pkg.get_full_name(), '...')
             if (doStuff):
                 if ( not(pkg.extract()) ) :
                     print('=x= Extract phase failed for', pkg.get_full_name(), '...')
+                    failFlag = True
                     break
             print('=x= Starting Prerequisite phase of', pkg.get_full_name(), '...')
             if (doStuff):
                 if ( not(pkg.prerequisites()) ) :
                     print('=x= Prerequisite phase failed for', pkg.get_full_name(), '...')
+                    failFlag = True
                     break
             print('=x= Starting Build phase of', pkg.get_full_name(), '...')
             if (doStuff):
                 if ( not(pkg.build()) ) :
                     print('=x= Build phase failed for', pkg.get_full_name(), '...')
+                    failFlag = True
                     break
             print('=x= Starting install phase of', pkg.get_full_name(), '...')
             if (doStuff):
                 if ( not(pkg.install()) ) :
                     print('=x= Install phase failed for', pkg.get_full_name(), '...')
+                    failFlag = True
                     break
-        print("=x= Completed target : " + TARGET)
-    print("=x= xTools completed succesfully.")
+        if (failFlag) :
+            print("=x= Aborted at target : " + TARGET)
+            break
+        else:
+            print("=x= Completed target : " + TARGET)
+            
+    if (failFlag) :
+        print("=x= xTools aborted.")
+        exit(3)
+    else:
+        print("=x= xTools completed succesfully.")
 
 
 if __name__ == '__main__':
