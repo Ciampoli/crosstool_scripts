@@ -292,6 +292,13 @@ def main():
                     print('=x= Install phase failed for', pkg.get_full_name(), '...')
                     failFlag = True
                     break
+            # this phase is required in multi-user environments
+            print('=x= Starting chmod phase of', pkg.get_full_name(), '...')
+            if (doStuff):
+                if ( not(pkg.chmod_src()) ) :
+                    print('=x= chmod phase failed for', pkg.get_full_name(), '...')
+                    failFlag = True
+                    break
         if (failFlag) :
             print("=x= Aborted at target : " + TARGET)
             break

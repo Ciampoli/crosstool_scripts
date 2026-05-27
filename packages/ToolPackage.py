@@ -30,15 +30,20 @@ import os
 import tarfile
 import subprocess
 import shutil, stat
-# WARNING : if you answer by Y, write-protected dirs
-# and files will be removed.
+
 # simple function to support recursive remove of
-# write-protected files 
+# write-protected files belonging to the owner
+#
+# Warning: one cannot apply chmod to file not owned 
 def remove_readonly(func, path, _):
     "Clear the readonly bit and reattempt the removal"
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
+# simple function to recursively remove folders
+# 
+# WARNING : if you answer by Y, write-protected dirs
+# and files will be removed.
 def remove_onExistence(dirTree, nameString):
     if os.path.exists(dirTree):
         print("=x= WARNING:",  nameString, "dir " + dirTree + " already exists.")
@@ -56,6 +61,25 @@ def remove_onExistence(dirTree, nameString):
             print("I do not understand, continuing ...")
         print()
     return
+
+# Since chmod can only be applied to owned files, one can 
+# use this at the end of the work for src directory
+# to add a group write perm to the existing permissions
+# use stat.S_IWGRP to add write for people belonging to group
+def recursive_chmod(path, addpattern):
+    for dirpath, dirnames, filenames in os.walk(path):
+        current_permissions = stat.S_IMODE(os.lstat(dirpath).st_mode)
+        os.chmod(dirpath, current_permissions | addpattern)
+        for filename in filenames:
+            fPath = os.path.join(dirpath,filename)
+            current_permissions = stat.S_IMODE(os.lstat(fPath).st_mode)
+            os.chmod(fPath, current_permissions | addpattern)
+
+def recursive_print(path, addpattern):
+    for dirpath, dirnames, filenames in os.walk(path):
+        print('d ', dirpath)
+        for filename in filenames:
+            print('f -------- ', filename)
 
 def show_pwd():
     cwd = os.getcwd()
@@ -142,7 +166,7 @@ class BaseClass(object):
             tar.extractall(path=self.configDic['src_dir'])
             tar.close()
         else:
-            print('Package already extracted.. do nothing')
+            print('Package already extracted... do nothing')
         return True
 
     # returns True always
@@ -175,3 +199,16 @@ class BaseClass(object):
         # go to the build directory
         os.chdir(self.get_build())
         return True
+    
+    # returns True always ... 
+    def chmod_src(self):
+        """ This function adds write permission for users of the same group
+        """
+        addpattern = stat.S_IWGRP
+        if os.path.exists(self.configDic['src_dir']):
+            recursive_chmod(self.configDic['src_dir'], addpattern)
+        else:
+            print('Cannot find the src dir for package... do nothing')
+        return True
+
+ 
